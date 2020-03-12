@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"fmt"
 	"net/http"
 	"flag"
@@ -8,39 +9,59 @@ import (
 	"os"
 	"os/user"
 	"io/ioutil"
+	"time"
 )
 
-func get_subdomains(domain string) []string {
+func get_subdomains(domain string) ([]string, error) {
 	config := load_config()
 	url := fmt.Sprintf("http://%s:%s/subdomains/%s", config["host"], config["port"], domain)
-	resp, _ := http.Get(url)
-	defer resp.Body.Close()
+	client := http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
+	// defer resp.Body.Close()
+
+	if err != nil {
+        log.Fatal("Unable to connect to crobat server.", err)
+	}
 
 	var subdomains []string
 	json.NewDecoder(resp.Body).Decode(&subdomains)
-	return subdomains
+	return subdomains, err
 }
 
-func get_tlds(domain string) []string {
+func get_tlds(domain string) ([]string,  error) {
 	config := load_config()
 	url := fmt.Sprintf("http://%s:%s/tlds/%s", config["host"], config["port"], domain)
-	resp, _ := http.Get(url)
+	client := http.Client{
+    	Timeout: 5 * time.Second,
+	}
+	resp, err := client.Get(url)
 	defer resp.Body.Close()
+
+	if err != nil {
+        log.Fatal("Unable to connect to crobat server.", err)
+	}
 
 	var tlds []string
 	json.NewDecoder(resp.Body).Decode(&tlds)
-	return tlds
+	return tlds, err
 }
 
-func get_all(domain string) []map[string]string {
+func get_all(domain string) ([]map[string]string, error)  {
 	config := load_config()
 	url := fmt.Sprintf("http://%s:%s/all/%s", config["host"], config["port"], domain)
-	resp, _ := http.Get(url)
+	client := http.Client{
+    	Timeout: 5 * time.Second,
+	}
+	resp, err := client.Get(url)
 	defer resp.Body.Close()
+
+	if err != nil {
+        log.Fatal("Unable to connect to crobat server.", err)
+	}
 
 	var data []map[string]string
 	json.NewDecoder(resp.Body).Decode(&data)
-	return data
+	return data, err
 }
 
 func load_config() map[string]interface{} {
@@ -92,37 +113,61 @@ func main() {
 		// config["key"] = key
 
 		str, _ := json.MarshalIndent(config, "", "  ")
-		fmt.Println(string(str))
-		ioutil.WriteFile(path, str, 0644)
+
+		// fmt.Println(string(str))
+		err := ioutil.WriteFile(path, str, 0644)
+		if (err == nil) {
+			fmt.Println("Saved to ~/.crobatrc successfully")
+		} else {
+			fmt.Println("Saving ~/.crobatrc failed")
+			fmt.Println("Error:", err)
+		}
 	}
 
 	if (*domain_sub != "") {
+
+		data, err := get_subdomains(*domain_sub)
+		if err != nil {
+        	log.Fatal("Unable to connect to crobat server.", err)
+		}
+
 		if (*format == "json") {
-			str, _ := json.MarshalIndent(get_subdomains(*domain_sub), "", "    ")
+			str, _ := json.MarshalIndent(data, "", "    ")
 			fmt.Println(string(str))
 		} else if (*format == "plain") {
-			subdomains := get_subdomains(*domain_sub)
-			for i := 0; i < len(subdomains); i++ {
-				fmt.Println(subdomains[i])
+			for i:=0; i < len(data); i++ {
+				fmt.Println(data[i])
 			}
 		}	
+
 	} else if (*domain_tld != "") {
+
+		data, err := get_tlds(*domain_tld)
+		if err != nil {
+        	log.Fatal("Unable to connect to crobat server.", err)
+		}	
+
 		if (*format == "json") {
-			str, _ := json.MarshalIndent(get_tlds(*domain_tld), "", "    ")
+			str, _ := json.MarshalIndent(data, "", "    ")
 			fmt.Println(string(str))
 		} else if (*format == "plain") {
-			tlds := get_tlds(*domain_tld)
-			for i := 0; i < len(tlds); i++ {
-				fmt.Println(tlds[i])
+			for i:=0; i < len(data); i++ {
+				fmt.Println(data[i])
 			}
 		}
+
 	} else if (*domain_all != "") {
+
+		data, err := get_all(*domain_all)
+		if err != nil {
+        	log.Fatal("Unable to connect to crobat server.", err)
+		}	
+
 		if (*format == "json") {
-			str, _ := json.MarshalIndent(get_all(*domain_all), "", "    ")
+			str, _ := json.MarshalIndent(data, "", "    ")
 			fmt.Println(string(str))
 		} else if (*format == "plain") {
-		
-			for _, i := range get_all(*domain_all) {
+			for _, i := range data {
 				fmt.Println(i["name"])
 			}
 		}
